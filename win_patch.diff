@@ -94,10 +94,10 @@ index cd1ffa3dbd74..9a18c533f9c4 100644
  
 diff --git a/chrome/browser/elemhide_server_runner.cc b/chrome/browser/elemhide_server_runner.cc
 new file mode 100644
-index 000000000000..11803c2b2ba8
+index 000000000000..0aded3105137
 --- /dev/null
 +++ b/chrome/browser/elemhide_server_runner.cc
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,56 @@
 +#include "chrome/browser/elemhide_server_runner.h"
 +
 +// Better use Chromium's code base instead of OS's
@@ -109,18 +109,30 @@ index 000000000000..11803c2b2ba8
 +void ElemhideServerRunner::RunElemhideServer() {
 +  base::FilePath elemhide_server_binary_filename;
 +  base::PathService::Get(base::DIR_EXE, &elemhide_server_binary_filename);
-+#if defined(OS_POSIX) || defined(OS_WIN)
++
 +  elemhide_server_binary_filename = elemhide_server_binary_filename.AppendASCII("bin/shadowblock_elemhide_server_posix");
-+  
++#if defined(OS_POSIX) || defined(OS_MACOSX)
 +  std::string run_elemhide_server_binary_command;
 +  run_elemhide_server_binary_command.append(elemhide_server_binary_filename.value());
 +  // Append & to make the execution background
 +  run_elemhide_server_binary_command.append(" &");
++#endif
++#if defined(OS_WIN)
++  std::wstring run_elemhide_server_binary_command;
++  run_elemhide_server_binary_command.append(elemhide_server_binary_filename.value());
++  // Append & to make the execution background
++  run_elemhide_server_binary_command.append(L" &");
++#endif
 +  std::cout << "[SB][info] Running elemhide server binary..."
 +            << std::endl;
 +
 +  // Execute the command in shell
++#if defined(OS_POSIX) || defined(OS_MACOSX)
 +  int ret_value = system(run_elemhide_server_binary_command.c_str());
++#endif
++#if defined(OS_WIN)
++  int ret_value = _wsystem(run_elemhide_server_binary_command.c_str());
++#endif
 +  if (ret_value != 0) {
 +    std::cout << "[SB][error] Elemhide server was NOT successfully started!"
 +              << std::endl;
@@ -128,7 +140,6 @@ index 000000000000..11803c2b2ba8
 +    std::cout << "[SB][info] Elemhide server was successfully started."
 +              << std::endl;
 +  }
-+#endif
 +}
 +
 +void ElemhideServerRunner::TerminateElemhideServer() {
@@ -146,16 +157,15 @@ index 000000000000..11803c2b2ba8
 \ No newline at end of file
 diff --git a/chrome/browser/elemhide_server_runner.h b/chrome/browser/elemhide_server_runner.h
 new file mode 100644
-index 000000000000..fb2cb3c588ed
+index 000000000000..4fcbec241c10
 --- /dev/null
 +++ b/chrome/browser/elemhide_server_runner.h
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,21 @@
 +#ifndef CHROME_BROWSER_ELEMHIDE_SERVER_H_
 +#define CHROME_BROWSER_ELEMHIDE_SERVER_H_
 +
 +#include <iostream>
 +
-+// For downloading Python downloading script
 +#include <stdlib.h>
 +
 +class ElemhideServerRunner {
@@ -387,29 +397,37 @@ index a358499ad936..89a10da623b9 100644
  }
  }  // namespace blink
 diff --git a/third_party/blink/renderer/core/dom/document.cc b/third_party/blink/renderer/core/dom/document.cc
-index 79137c8fd5dc..80bf814cd091 100644
+index 79137c8fd5dc..82110447f936 100644
 --- a/third_party/blink/renderer/core/dom/document.cc
 +++ b/third_party/blink/renderer/core/dom/document.cc
-@@ -31,6 +31,18 @@
+@@ -31,6 +31,26 @@
  
  #include <memory>
  
 +// @SB
 +// System libraries for supporting Socket
 +#include <stdio.h>
-+#include <sys/socket.h>
 +#include <stdlib.h>
-+#include <netinet/in.h>
 +#include <string.h>
-+#include <arpa/inet.h>
++#if defined(OS_POSIX) || defined(OS_MACOSX)
 +#include <unistd.h>
++#include <sys/socket.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#endif
++#if defined(OS_WIN)
++#include <io.h>
++#include <winsock2.h>
++#include <windows.h>
++#endif
++
 +// Logging
 +#include "third_party/blink/renderer/shadowblock/logging.h"
 +
  #include "base/auto_reset.h"
  #include "base/macros.h"
  #include "base/optional.h"
-@@ -585,6 +597,124 @@ class Document::NetworkStateObserver final
+@@ -585,6 +605,139 @@ class Document::NetworkStateObserver final
        online_observer_handle_;
  };
  
@@ -455,7 +473,12 @@ index 79137c8fd5dc..80bf814cd091 100644
 +// FIXME: switch to Chromium's internal library
 +String Document::SendAndReceiveSocketMsg(String msg, String ip_addr) {
 +  int sock = 0;
++#if defined(OS_POSIX) || defined(OS_MACOSX)
 +  ssize_t msg_code = 0;
++#endif
++#if defined(OS_WIN)
++  int msg_code = 0;
++#endif
 +  int msg_len = 0;
 +  struct sockaddr_in server_addr;
 +
@@ -465,7 +488,12 @@ index 79137c8fd5dc..80bf814cd091 100644
 +  // Buffer for one segment of the long selector string
 +  char msg_segment_buffer[SHADOWBLOCK_CSS_SOCKET_MSG_SEGMENT_BUFFER_LEN] = {0};
 +
++#if defined(OS_POSIX) || defined(OS_MACOSX)
 +  if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
++#endif
++#if defined(OS_WIN)
++  if ((sock = (int)socket(AF_INET, SOCK_STREAM, 0)) < 0) {
++#endif
 +    std::cout << "[SB-Error][ElemHide] Socket creation error"
 +              << std::endl;
 +    return "";
@@ -490,7 +518,12 @@ index 79137c8fd5dc..80bf814cd091 100644
 +  }
 +  
 +  // Send the URL
++#if defined(OS_POSIX) || defined(OS_MACOSX)
 +  send(sock, msg.Utf8().data(), strlen(msg.Utf8().data()), 0);
++#endif
++#if defined(OS_WIN)
++  send(sock, msg.Utf8().data(), (int)strlen(msg.Utf8().data()), 0);
++#endif
 +#if PRINT_SOCKET_SERVER_INFO
 +  std::cout << "[SB-Info][ElemHide] Requesting HTML rules for URL: "
 +            << msg.Utf8().data()
@@ -534,7 +567,7 @@ index 79137c8fd5dc..80bf814cd091 100644
  Document* Document::CreateForTest() {
    return MakeGarbageCollected<Document>(DocumentInit::Create());
  }
-@@ -716,6 +846,11 @@ Document::Document(const DocumentInit& initializer,
+@@ -716,6 +869,11 @@ Document::Document(const DocumentInit& initializer,
          ->ProvideDocumentToResourceFetcherProperties(*this);
      fetcher_->SetConsoleLogger(this);
  
@@ -546,7 +579,7 @@ index 79137c8fd5dc..80bf814cd091 100644
      // TODO(dcheng): Why does this need to check that DOMWindow is non-null?
      CustomElementRegistry* registry =
          frame_->DomWindow() ? frame_->DomWindow()->MaybeCustomElements()
-@@ -4045,6 +4180,22 @@ void Document::SetURL(const KURL& url) {
+@@ -4045,6 +4203,22 @@ void Document::SetURL(const KURL& url) {
    if (new_url == url_)
      return;
  
@@ -1263,10 +1296,10 @@ index fa5ca25de3b7..e29e2e71d31c 100644
        name: "AllowActivationDelegationAttr",
 diff --git a/third_party/blink/renderer/shadowblock/BUILD.gn b/third_party/blink/renderer/shadowblock/BUILD.gn
 new file mode 100644
-index 000000000000..53d19715b0cf
+index 000000000000..c1da84005530
 --- /dev/null
 +++ b/third_party/blink/renderer/shadowblock/BUILD.gn
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,30 @@
 +import("//third_party/blink/renderer/core/core.gni")
 +
 +blink_core_sources("shadowblock") {
@@ -1290,8 +1323,11 @@ index 000000000000..53d19715b0cf
 +    "$root_out_dir/bin/shadowblock_elemhide_server",
 +  ]
 +
-+  if (is_posix | is_win) {
++  if (is_posix) {
 +    args = [ "--os", "posix" ]
++  }
++  if (is_win) {
++    args = [ "--os", "win" ]
 +  }
 +}
 \ No newline at end of file
@@ -1561,10 +1597,10 @@ index 000000000000..c1f9bb6b8d6d
 +#endif // THIRD_PARTY_BLINK_RENDERER_SHADOWBLOCK_LOGGING_H_
 diff --git a/third_party/blink/renderer/shadowblock/script/download_elemhide_server_binary.py b/third_party/blink/renderer/shadowblock/script/download_elemhide_server_binary.py
 new file mode 100644
-index 000000000000..2e1775de3241
+index 000000000000..a1eff71fa3b8
 --- /dev/null
 +++ b/third_party/blink/renderer/shadowblock/script/download_elemhide_server_binary.py
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,64 @@
 +import optparse
 +import urllib2
 +import os
@@ -1580,13 +1616,26 @@ index 000000000000..2e1775de3241
 +    url = "https://github.com/seclab-ucr/ShadowBlock/releases/download/v1.0-alpha/shadowblock_elemhide_server_macos"
 +elif options.os_type == 'win':
 +    print("[SB][compile][info] OS type: win")
-+    url = "https://github.com/seclab-ucr/ShadowBlock/releases/download/v1.0-alpha/shadowblock_elemhide_server_win"
++    url = "https://github.com/seclab-ucr/ShadowBlock/releases/download/v1.0-alpha/shadowblock_elemhide_server_posix"
 +file_name = url.split('/')[-1]
 +if os.path.isfile('bin/' + file_name):
 +    print("[SB][compile][info] Binary already exists!")
 +    exit()
 +
-+u = urllib2.urlopen(url)
++try:
++    u = urllib2.urlopen(url)
++except urllib2.URLError:
++    # non-HTTPs version for handling SSL certificate issue
++    print("[SB][compile][error] SSL issue during download, switching to HTTP server...")
++    if options.os_type == 'posix':
++        url = "http://terran.cs.ucr.edu/shadowblock_elemhide_server_posix"
++        u = urllib2.urlopen(url)
++    elif options.os_type == 'macos':
++        url = "http://terran.cs.ucr.edu/shadowblock_elemhide_server_macos"
++        u = urllib2.urlopen(url)
++    elif options.os_type == 'win':
++        url = "http://terran.cs.ucr.edu/shadowblock_elemhide_server_posix"
++        u = urllib2.urlopen(url)
 +f = open('bin/' + file_name, 'wb')
 +meta = u.info()
 +file_size = int(meta.getheaders("Content-Length")[0])
@@ -1613,7 +1662,8 @@ index 000000000000..2e1775de3241
 +f.close()
 +
 +print("[SB][compile][info] Binary downloaded.")
-+print("[SB][compile][info] Granting the binary execution privilege...")
++if options.os_type == 'posix' or options.os_type == 'macos':
++    print("[SB][compile][info] Granting the binary execution privilege...")
 +os.system("chmod +x bin/" + file_name)
 \ No newline at end of file
 diff --git a/third_party/blink/renderer/shadowblock/shadowblock.h b/third_party/blink/renderer/shadowblock/shadowblock.h
