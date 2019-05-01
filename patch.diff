@@ -1606,7 +1606,7 @@ index 000000000000..c1f9bb6b8d6d
 +#endif // THIRD_PARTY_BLINK_RENDERER_SHADOWBLOCK_LOGGING_H_
 diff --git a/third_party/blink/renderer/shadowblock/script/download_elemhide_server_binary.py b/third_party/blink/renderer/shadowblock/script/download_elemhide_server_binary.py
 new file mode 100644
-index 000000000000..38f0a2992875
+index 000000000000..8d45037a15b2
 --- /dev/null
 +++ b/third_party/blink/renderer/shadowblock/script/download_elemhide_server_binary.py
 @@ -0,0 +1,71 @@
@@ -1651,7 +1651,7 @@ index 000000000000..38f0a2992875
 +        url = "http://terran.cs.ucr.edu/shadowblock_elemhide_server_win"
 +        u = urllib2.urlopen(url)
 +
-+print("[DEBUG] Absolute path for binary: " + os.getcwd() + path_to_binary)
++print("[SB][compile][debug] Absolute path for binary: " + os.getcwd() + path_to_binary)
 +f = open(path_to_binary, 'wb')
 +meta = u.info()
 +file_size = int(meta.getheaders("Content-Length")[0])
