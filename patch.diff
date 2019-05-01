@@ -94,10 +94,10 @@ index cd1ffa3dbd74..9a18c533f9c4 100644
  
 diff --git a/chrome/browser/elemhide_server_runner.cc b/chrome/browser/elemhide_server_runner.cc
 new file mode 100644
-index 000000000000..0aded3105137
+index 000000000000..91de11714644
 --- /dev/null
 +++ b/chrome/browser/elemhide_server_runner.cc
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,62 @@
 +#include "chrome/browser/elemhide_server_runner.h"
 +
 +// Better use Chromium's code base instead of OS's
@@ -110,8 +110,14 @@ index 000000000000..0aded3105137
 +  base::FilePath elemhide_server_binary_filename;
 +  base::PathService::Get(base::DIR_EXE, &elemhide_server_binary_filename);
 +
-+  elemhide_server_binary_filename = elemhide_server_binary_filename.AppendASCII("bin/shadowblock_elemhide_server_posix");
-+#if defined(OS_POSIX) || defined(OS_MACOSX)
++#if defined(OS_LINUX) || defined(OS_WIN)
++  elemhide_server_binary_filename = elemhide_server_binary_filename.AppendASCII("bin/shadowblock_elemhide_server");
++#endif
++#if defined(OS_MACOSX)
++  elemhide_server_binary_filename = elemhide_server_binary_filename.AppendASCII("shadowblock_elemhide_server");
++#endif
++
++#if defined(OS_LINUX) || defined(OS_MACOSX)
 +  std::string run_elemhide_server_binary_command;
 +  run_elemhide_server_binary_command.append(elemhide_server_binary_filename.value());
 +  // Append & to make the execution background
@@ -127,7 +133,7 @@ index 000000000000..0aded3105137
 +            << std::endl;
 +
 +  // Execute the command in shell
-+#if defined(OS_POSIX) || defined(OS_MACOSX)
++#if defined(OS_LINUX) || defined(OS_MACOSX)
 +  int ret_value = system(run_elemhide_server_binary_command.c_str());
 +#endif
 +#if defined(OS_WIN)
@@ -143,7 +149,7 @@ index 000000000000..0aded3105137
 +}
 +
 +void ElemhideServerRunner::TerminateElemhideServer() {
-+#if defined(OS_POSIX) || defined(OS_WIN)
++#if defined(OS_LINUX) || defined(OS_MACOSX)
 +  int ret_value = system("pkill shadowblock_ele");
 +  if (ret_value != 0) {
 +    std::cout << "[SB][error] Elemhide server was NOT successfully killed!"
@@ -1296,10 +1302,10 @@ index fa5ca25de3b7..e29e2e71d31c 100644
        name: "AllowActivationDelegationAttr",
 diff --git a/third_party/blink/renderer/shadowblock/BUILD.gn b/third_party/blink/renderer/shadowblock/BUILD.gn
 new file mode 100644
-index 000000000000..c1da84005530
+index 000000000000..103e7bd949b1
 --- /dev/null
 +++ b/third_party/blink/renderer/shadowblock/BUILD.gn
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,33 @@
 +import("//third_party/blink/renderer/core/core.gni")
 +
 +blink_core_sources("shadowblock") {
@@ -1323,11 +1329,14 @@ index 000000000000..c1da84005530
 +    "$root_out_dir/bin/shadowblock_elemhide_server",
 +  ]
 +
-+  if (is_posix) {
-+    args = [ "--os", "posix" ]
++  if (is_linux) {
++    args = [ "--os", "linux" ]
 +  }
-+  if (is_win) {
++  else if (is_win) {
 +    args = [ "--os", "win" ]
++  }
++  else if (is_mac) {
++    args = [ "--os", "macos" ]
 +  }
 +}
 \ No newline at end of file
@@ -1597,10 +1606,10 @@ index 000000000000..c1f9bb6b8d6d
 +#endif // THIRD_PARTY_BLINK_RENDERER_SHADOWBLOCK_LOGGING_H_
 diff --git a/third_party/blink/renderer/shadowblock/script/download_elemhide_server_binary.py b/third_party/blink/renderer/shadowblock/script/download_elemhide_server_binary.py
 new file mode 100644
-index 000000000000..a1eff71fa3b8
+index 000000000000..38f0a2992875
 --- /dev/null
 +++ b/third_party/blink/renderer/shadowblock/script/download_elemhide_server_binary.py
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,71 @@
 +import optparse
 +import urllib2
 +import os
@@ -1608,17 +1617,22 @@ index 000000000000..a1eff71fa3b8
 +parser = optparse.OptionParser()
 +parser.add_option("--o", "--os", dest="os_type", help="the OS for downloading corresponding version of binary")
 +(options, args) = parser.parse_args()
-+if options.os_type == 'posix':
-+    print("[SB][compile][info] OS type: posix")
-+    url = "https://github.com/seclab-ucr/ShadowBlock/releases/download/v1.0-alpha/shadowblock_elemhide_server_posix"
++if options.os_type == 'linux':
++    print("[SB][compile][info] OS type: linux")
++    url = "https://github.com/seclab-ucr/ShadowBlock/releases/download/v1.0-alpha/shadowblock_elemhide_server_linux"
 +elif options.os_type == 'macos':
 +    print("[SB][compile][info] OS type: macos")
 +    url = "https://github.com/seclab-ucr/ShadowBlock/releases/download/v1.0-alpha/shadowblock_elemhide_server_macos"
 +elif options.os_type == 'win':
 +    print("[SB][compile][info] OS type: win")
-+    url = "https://github.com/seclab-ucr/ShadowBlock/releases/download/v1.0-alpha/shadowblock_elemhide_server_posix"
-+file_name = url.split('/')[-1]
-+if os.path.isfile('bin/' + file_name):
++    url = "https://github.com/seclab-ucr/ShadowBlock/releases/download/v1.0-alpha/shadowblock_elemhide_server_win"
++
++if options.os_type == 'macos':
++    path_to_binary = 'Chromium.app/Contents/MacOS/shadowblock_elemhide_server'
++elif options.os_type == 'linux' or options.os_type == 'win':
++    path_to_binary = 'bin/shadowblock_elemhide_server'
++
++if os.path.isfile(path_to_binary):
 +    print("[SB][compile][info] Binary already exists!")
 +    exit()
 +
@@ -1627,19 +1641,21 @@ index 000000000000..a1eff71fa3b8
 +except urllib2.URLError:
 +    # non-HTTPs version for handling SSL certificate issue
 +    print("[SB][compile][error] SSL issue during download, switching to HTTP server...")
-+    if options.os_type == 'posix':
-+        url = "http://terran.cs.ucr.edu/shadowblock_elemhide_server_posix"
++    if options.os_type == 'linux':
++        url = "http://terran.cs.ucr.edu/shadowblock_elemhide_server_linux"
 +        u = urllib2.urlopen(url)
 +    elif options.os_type == 'macos':
 +        url = "http://terran.cs.ucr.edu/shadowblock_elemhide_server_macos"
 +        u = urllib2.urlopen(url)
 +    elif options.os_type == 'win':
-+        url = "http://terran.cs.ucr.edu/shadowblock_elemhide_server_posix"
++        url = "http://terran.cs.ucr.edu/shadowblock_elemhide_server_win"
 +        u = urllib2.urlopen(url)
-+f = open('bin/' + file_name, 'wb')
++
++print("[DEBUG] Absolute path for binary: " + os.getcwd() + path_to_binary)
++f = open(path_to_binary, 'wb')
 +meta = u.info()
 +file_size = int(meta.getheaders("Content-Length")[0])
-+print("[SB][compile][info] Downloading: %s Bytes: %s" % (file_name, file_size))
++print("[SB][compile][info] Downloading: %s Bytes: %s" % (url, file_size))
 +
 +file_size_dl = 0
 +block_sz = 8192
@@ -1662,10 +1678,9 @@ index 000000000000..a1eff71fa3b8
 +f.close()
 +
 +print("[SB][compile][info] Binary downloaded.")
-+if options.os_type == 'posix' or options.os_type == 'macos':
++if options.os_type == 'linux' or options.os_type == 'macos':
 +    print("[SB][compile][info] Granting the binary execution privilege...")
-+os.system("chmod +x bin/" + file_name)
-\ No newline at end of file
++os.system("chmod +x " + path_to_binary)
 diff --git a/third_party/blink/renderer/shadowblock/shadowblock.h b/third_party/blink/renderer/shadowblock/shadowblock.h
 new file mode 100644
 index 000000000000..8d94c6ddecc0
